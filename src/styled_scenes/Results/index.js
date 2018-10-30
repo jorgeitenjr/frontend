@@ -101,15 +101,10 @@ export default class ResultsScene extends Component {
     for (const marker of markers) {
       bounds.extend(new window.google.maps.LatLng(marker.lat, marker.lng));
     }
-    const newBounds = {
-      ne: { lat: bounds.getNorthEast().lat(), lng: bounds.getNorthEast().lng() },
-      sw: { lat: bounds.getSouthWest().lat(), lng: bounds.getSouthWest().lng() },
+    return {
+      center: { lat: bounds.getCenter().lat(), lng: bounds.getCenter().lng() },
+      zoom: defaultZoom,
     };
-    // TODO: @jaydp dynamically calculate this width and height
-    const size = { width: 400, height: 800 };
-    const { center, zoom } = fitBounds(newBounds, size);
-    // if we zoom more than 14, it's too much zoomed into a really small location
-    return { center, zoom: Math.min(zoom, 14) };
   };
 
   componentWillReceiveProps(nextProps) {
