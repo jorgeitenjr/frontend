@@ -4,7 +4,7 @@ import styled from 'styled-components';
 import { bindActionCreators } from 'redux';
 import moment from 'moment';
 import axios from 'libs/axios';
-import { Loader } from 'semantic-ui-react';
+import { Loader, Dimmer } from 'semantic-ui-react';
 import { Link } from 'react-router-dom';
 import { media } from 'libs/styled';
 
@@ -196,11 +196,17 @@ const Footer = styled.div`
   }
 `;
 
+function stateFromProps(props) {
+  return {
+    days: props.trip.duration / 1440 || 1,
+    guests: Array.from({ length: props.trip.peopleCount }).map(_ => ({})),
+  };
+}
+
 class CheckoutContainer extends React.Component {
   constructor(props) {
     super(props);
     this.tripId = props.match.params.id;
-    props.fetchTrip(this.tripId);
     this.state = {
       step: 1,
       days: null,
@@ -208,14 +214,20 @@ class CheckoutContainer extends React.Component {
       provision: [],
       nextDisabled: false,
     };
+
+    props.fetchTrip(this.tripId);
+
+    if (props.trip && props.trip.id === this.tripId) {
+      this.state = {
+        ...this.state,
+        ...stateFromProps(props),
+      };
+    }
   }
 
   static getDerivedStateFromProps(props, state) {
     if (props.trip && !state.days) {
-      return {
-        days: props.trip.duration / 1440 || 1,
-        guests: Array.from({ length: props.trip.peopleCount }).map(_ => ({})),
-      };
+      return stateFromProps(props);
     }
     return null;
   }
@@ -233,16 +245,32 @@ class CheckoutContainer extends React.Component {
     }
   }
 
-  async getProvisionCodes() {
-    try {
-      const provision = await axios.post(`/trips/${this.tripId}/provision`);
-      this.setState({
-        provision: provision.data,
-      });
-    } catch (error) {
-      console.error('provision failed', error.response.data);
-    }
-  }
+  getProvisionCodes = () => {
+    this.setState(
+      {
+        loadingProvision: true,
+        errorProvision: null,
+      },
+      async () => {
+        try {
+          const provision = await axios.post(`/trips/${this.tripId}/provision`);
+
+          if (provision.data.some(service => !service.provisioned)) {
+            throw new Error('Some services could not be provisioned');
+          }
+
+          this.setState({
+            provision: provision.data,
+            loadingProvision: false,
+          });
+        } catch (error) {
+          this.setState({
+            errorProvision: error.message ? error.message : error.response.data,
+          });
+        }
+      },
+    );
+  };
 
   nextStep = () => {
     this.setState(
@@ -276,15 +304,31 @@ class CheckoutContainer extends React.Component {
   };
 
   renderStep() {
-    const { step, guests } = this.state;
+    const { step, guests, loadingProvision, errorProvision } = this.state;
     const { trip } = this.props;
 
     if (step === 4) {
       return <BookingDone guests={guests} trip={trip} />;
     }
+
     if (step === 3) {
-      return <PaymentContainer nextStep={this.nextStep} guests={guests} trip={trip} />;
+      return (
+        <Dimmer.Dimmable dimmed={loadingProvision}>
+          <Dimmer active={loadingProvision}>
+            <Loader />
+          </Dimmer>
+          <PaymentContainer
+            getProvisionCodes={this.getProvisionCodes}
+            error={errorProvision}
+            nextStep={this.nextStep}
+            guests={guests}
+            trip={trip}
+          />
+          ;
+        </Dimmer.Dimmable>
+      );
     }
+
     return step === 1 ? (
       <CheckoutTrip trip={trip} />
     ) : (
